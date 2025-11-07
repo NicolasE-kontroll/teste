@@ -1,5 +1,5 @@
 # C:\ProgramData\e-Monitor\bootstrap.ps1
-# Read files.json, download ONLY missing or changed files, remove local version.txt,
+# Read files.json, download ONLY missing or changed files,
 # retry after 1 minute on critical failure, start e-Monitor.exe, and delete .bak at the end.
 
 # ==================== CONFIG ====================
@@ -8,7 +8,6 @@ $MainExe              = 'e-Monitor.exe'
 $MainArgs             = '--limit 100'
 $RetryCount           = 3
 $TimeoutSec           = 120
-$DeleteVersionTxtLocal= $true
 $MaxAttemptsOnFailure = 3
 $WaitBetweenAttemptsS = 60
 # =================================================
@@ -142,15 +141,7 @@ function Ensure-RemoteFile($name, $sha256=$null) {
 function Run-Once {
   Write-Log ("=== Bootstrap started for {0} ===" -f $env:USERNAME)
 
-  # 1) Remove local version.txt (if configured)
-  if ($DeleteVersionTxtLocal) {
-    $verLocal = Join-Path $UserDir 'version.txt'
-    if (Test-Path $verLocal) {
-      try { Remove-Item $verLocal -Force -ErrorAction SilentlyContinue; Write-Log "version.txt removed." } catch { Write-Log ("WARN: cannot remove version.txt: {0}" -f $_.Exception.Message) }
-    }
-  }
-
-  # 2) Read files.json
+  # 1) Read files.json
   $manifestUrl = $BaseUrl + 'files.json'
   $resp = Invoke-Web $manifestUrl
   if (-not $resp -or [string]::IsNullOrWhiteSpace($resp.Content)) {
@@ -165,7 +156,7 @@ function Run-Once {
     throw "files.json has no 'files' entries."
   }
 
-  # 3) Split missing vs existing
+  # 2) Split missing vs existing
   $items = @()
   foreach ($f in $json.files) {
     $n = $f.name
@@ -180,13 +171,13 @@ function Run-Once {
   Write-Log ("Missing: {0}"   -f (($missing  | ForEach-Object { $_.name }) -join ', '))
   Write-Log ("Existing: {0}"  -f (($existing | ForEach-Object { $_.name }) -join ', '))
 
-  # 4) Get missing first
+  # 3) Get missing first
   foreach ($it in $missing)  { Ensure-RemoteFile -name $it.name -sha256 $it.sha256 }
 
-  # 5) Then check existing (download only if changed)
+  # 4) Then check existing (download only if changed)
   foreach ($it in $existing) { Ensure-RemoteFile -name $it.name -sha256 $it.sha256 }
 
-  # 6) Start main app
+  # 5) Start main app
   $exePath = Join-Path $UserDir $MainExe
   if (Test-Path $exePath) {
     $already = Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($MainExe)) -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exePath }
@@ -200,7 +191,7 @@ function Run-Once {
     Write-Log ("WARNING: {0} not found after sync." -f $MainExe)
   }
 
-  # 7) Delete .bak at the end
+  # 6) Delete .bak at the end
   $baks = Get-ChildItem -Path $UserDir -Recurse -Filter "*.bak" -ErrorAction SilentlyContinue
   foreach ($b in $baks) {
     try { Remove-Item $b.FullName -Force; Write-Log ("Backup removed: {0}" -f $b.FullName) }
@@ -226,3 +217,4 @@ while ($true) {
     }
   }
 }
+
